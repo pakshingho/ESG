@@ -3,7 +3,25 @@
 """
 Created on Thu Oct 31 16:19:14 2019
 
-@author: shinggg
+@author: Pak Shing Ho
+
+In KLD dataset, 'companyname'-'year' is the unique identifier as some 'cusip's and 
+'ticker's are missing.
+
+# to create a linking table between CRSP and KLD
+# Output is a score reflecting the quality of the link
+# Score = 0 (best link) to Score = 6 (worst link)
+#
+# More explanation on score system:
+# - 0: BEST match: using (cusip, cusip dates and company names)
+#          or (exchange ticker, company names and 6-digit cusip)
+# - 1: Cusips and cusip dates match but company names do not match
+# - 2: Cusips and company names match but cusip dates do not match
+# - 3: Cusips match but cusip dates and company names do not match
+# - 4: tickers and 6-digit cusips match but company names do not match
+# - 5: tickers and company names match but 6-digit cusips do not match
+# - 6: tickers match but company names and 6-digit cusips do not match
+
 """
 
 import wrds
@@ -29,14 +47,18 @@ _kld1 = conn.raw_sql("""
 # Correct wrongly shifted CUSIP
 _kld1 = cusipCorrection(_kld1)
 
-# set 'NA', '0', '#N/A#' CUSIPs to missing values
+# set 'NA', '0', '#N/A#' CUSIPs and tickers to missing values
 _kld2 = _kld1.copy()
 _kld2['cusip'].replace({'NA':None, '0':None, '#N/A':None}, inplace=True)
 _kld2['ticker'].replace({'NA':None, '#N/A':None}, inplace=True)
+
+# set 'companyname' to uppercase. This will allow more backfill and forwardfill observations
 _kld2['companyname'] = _kld2['companyname'].str.upper()
 
 # Back fill and forward fill missing CUSIPs. Can also try bfill ticker.
 _kld2['cusip'] = _kld2.groupby(['companyname'])['cusip'].bfill().ffill()
+_kld2['ticker'] = _kld2.groupby(['companyname'])['ticker'].bfill().ffill()
+
 
 # Construct dates pre-2000, month is Aug; from 2001, monnth is Dec, all days are 31.
 _kld2['month'] = '12'
@@ -46,11 +68,11 @@ _kld2.year = _kld2.year.astype(int).astype(str)
 _kld2['date'] = pd.to_datetime(_kld2[['year', 'month', 'day']]).dt.date
 _kld2.drop(columns=['month', 'day'], inplace=True)
 
-_kld2_date = _kld2.groupby(['companyname','cusip']).date.agg(['min', 'max'])\
+_kld2_date = _kld2.groupby(['companyname', 'cusip']).date.agg(['min', 'max'])\
 .reset_index().rename(columns={'min':'fdate', 'max':'ldate'})
 
 # merge fdate ldate back to _kld2 data
-_kld3 = pd.merge(_kld2, _kld2_date,how='left', on =['companyname','cusip'])
+_kld3 = pd.merge(_kld2, _kld2_date, how='left', on =['companyname','cusip'])
 _kld3 = _kld3.sort_values(by=['companyname','cusip','date'])
 
 # keep only the most recent company name
@@ -228,7 +250,57 @@ _link2_3 = pd.merge(_link2_2, _link2_2_score, how='inner', on=['companyname', 't
 _link2_3 = _link2_3[['cusip','ticker','permno','companyname','comnam','name_ratio','score']].drop_duplicates()
 
 #####################################
-# Step 3: Finalize LInks and Scores #
+# Step 3: Finalize Links and Scores #
 #####################################
 
-iclink = _link1_2.append(_link2_3)
+# Caution: This link is based uppercase of 'companyname'. One need to convert 
+# 'companyname' in KLD data set before using this link to merge data sets.
+KLD_CRSP_link = _link1_2.append(_link2_3)
+
+
+################################################
+# Using Link Tables to Merge KLD and CRSP Data #
+################################################
+
+"""
+36397 merge by date method
+49606 merge by monthly period method
+49606 merge by business day method
+"""
+
+KLD = _kld2.copy()
+KLD['monthly'] = pd.to_datetime(KLD.date).dt.to_period('M') # month method
+
+KLD['date'] = pd.to_datetime(KLD.date) + pd.offsets.BusinessMonthBegin(0) - pd.offsets.BusinessDay(1) # business day method
+KLD['date'] = KLD['date'].apply(lambda x: x.date()) # business day method
+
+# CRSP Monthly Stock files
+crsp_msf = conn.raw_sql("""
+                        select distinct permno, date,
+                                       cusip
+                        from crsp.msf
+                        """)
+crsp_msf['monthly'] = pd.to_datetime(crsp_msf.date).dt.to_period('M') # month method
+
+# Merge KLD with the link table
+KLD_linked = KLD.merge(KLD_CRSP_link, on=['companyname'],
+                       suffixes=('_KLD', '_LINK'))
+
+# Merge CRSP with the link table
+crsp_linked = crsp_msf.merge(KLD_CRSP_link, on='permno',
+                             suffixes=('_crsp', '_LINK'))
+
+# 4 different merging methods give the same result:
+linked1 = KLD_linked.merge(crsp_linked, left_on=['companyname', 'date', 'permno', 'ticker_LINK'], 
+                           right_on=['companyname', 'date', 'permno', 'ticker'],
+                           suffixes=('_KLD_LINK', '_crsp_LINK'))
+
+linked2 = crsp_linked.merge(KLD_linked, left_on=['companyname', 'date', 'permno', 'ticker'], 
+                            right_on=['companyname', 'date', 'permno', 'ticker_LINK'],
+                            suffixes=('_crsp_LINK', '_KLD_LINK'))
+
+linked3 = KLD_linked.merge(crsp_msf, on=['permno', 'date'],
+                           suffixes=('_KLD_LINK', '_crsp'))
+
+linked4 = KLD.merge(crsp_linked, on=['companyname', 'monthly'],
+                    suffixes=('_KLD', '_crsp_LINK'))
