@@ -85,14 +85,22 @@ def cusipCorrection(DataFrame):
         count = len(data[data.cusip==d])
         counter += count
     print('\nTotal number of distinct wrong CUSIP: ' + str(len(cusipDict)))
-    print('\nToral wrong CUSIP observations: ' + str(counter))
+    print('\nTotal wrong CUSIP observations: ' + str(counter))
     
     # Correction by assigning according to the dictionary 'cusipDict' constructed above:
     for d in cusipDict.keys():
         data.loc[data.cusip==d, 'cusip'] = cusipDict[d]
     
     # Check any wrong Cusip observation left again after assignment:
-    print('Correction Done! Number of wrong CUSIP remain unassigned: ' 
+    print('Dictionary-Based Correction Done! Number of wrong CUSIP remain unassigned in dictionary-based method: ' 
           +  str(len(data[data.cusip.isin(cusipDict.keys())])))
+    
+    print('Number of wrong CUSIP remain unassigned that are also less than 8-digits: '
+          + str(sum(data.cusip.str.len()<8)))
+    print('For those only with 7 digits, add "00" in front and take first 6 digits;\n\
+          For those only with 6 digits add "000" in front and take first 5 digits')
+    data.loc[data.cusip.str.len()==7, 'cusip'] = '00' + data.loc[data.cusip.str.len()==7, 'cusip'].str[0:6]
+    data.loc[data.cusip.str.len()==6, 'cusip'] = '000' + data.loc[data.cusip.str.len()==6, 'cusip'].str[0:5]
+    print('Possible Correction Done!')
     
     return data

@@ -33,7 +33,7 @@ from cusipCorrection import cusipCorrection
 ###################
 # Connect to WRDS #
 ###################
-conn=wrds.Connection()
+conn = wrds.Connection()
 
 #########################
 # Step 1: Link by CUSIP #
@@ -63,7 +63,7 @@ _kld2['ticker'] = _kld2.groupby(['companyname'])['ticker'].bfill().ffill()
 # Construct dates pre-2000, month is Aug; from 2001, monnth is Dec, all days are 31.
 _kld2['month'] = '12'
 _kld2['day'] = '31'
-_kld2.loc[_kld2.year<=2000, 'month'] = '08' # commented out this has no effect on linking
+_kld2.loc[_kld2.year<=2000, 'month'] = '08' # commented out this has no effect on linking KLD-CRSP but affects linking with CCM-Link
 _kld2.year = _kld2.year.astype(int).astype(str)
 _kld2['date'] = pd.to_datetime(_kld2[['year', 'month', 'day']]).dt.date
 _kld2.drop(columns=['month', 'day'], inplace=True)
@@ -265,7 +265,7 @@ KLD_CRSP_link = _link1_2.append(_link2_3)
 """
 36397 merge by date method
 49606 merge by monthly period method
-49606 merge by business day method
+49606 merge by business day method 49559 if not consider pre-2000 Aug
 """
 
 KLD = _kld2.copy()
@@ -285,6 +285,7 @@ crsp_msf['monthly'] = pd.to_datetime(crsp_msf.date).dt.to_period('M') # month me
 # Merge KLD with the link table
 KLD_linked = KLD.merge(KLD_CRSP_link, on=['companyname'],
                        suffixes=('_KLD', '_LINK'))
+# KLD_linked.drop(columns=[''], inplace=True)
 
 # Merge CRSP with the link table
 crsp_linked = crsp_msf.merge(KLD_CRSP_link, on='permno',
@@ -294,13 +295,38 @@ crsp_linked = crsp_msf.merge(KLD_CRSP_link, on='permno',
 linked1 = KLD_linked.merge(crsp_linked, left_on=['companyname', 'date', 'permno', 'ticker_LINK'], 
                            right_on=['companyname', 'date', 'permno', 'ticker'],
                            suffixes=('_KLD_LINK', '_crsp_LINK'))
+linked1.drop(columns=['monthly_crsp_LINK', 'cusip_LINK_crsp_LINK', 'ticker',
+                      'comnam_crsp_LINK', 'name_ratio_crsp_LINK', 'score_crsp_LINK'], inplace=True)
+linked1.rename(columns={'monthly_KLD_LINK':'monthly',
+                        'cusip_LINK_KLD_LINK':'cusip_LINK',
+                        'comnam_KLD_LINK':'comnam',
+                        'name_ratio_KLD_LINK':'name_ratio',
+                        'score_KLD_LINK':'score'}, inplace=True)
 
 linked2 = crsp_linked.merge(KLD_linked, left_on=['companyname', 'date', 'permno', 'ticker'], 
                             right_on=['companyname', 'date', 'permno', 'ticker_LINK'],
                             suffixes=('_crsp_LINK', '_KLD_LINK'))
+linked2.drop(columns=['monthly_crsp_LINK', 'cusip_LINK_crsp_LINK', 'ticker',
+                      'comnam_crsp_LINK', 'name_ratio_crsp_LINK', 'score_crsp_LINK'], inplace=True)
+linked2.rename(columns={'monthly_KLD_LINK':'monthly',
+                        'cusip_LINK_KLD_LINK':'cusip_LINK',
+                        'comnam_KLD_LINK':'comnam',
+                        'name_ratio_KLD_LINK':'name_ratio',
+                        'score_KLD_LINK':'score'}, inplace=True)
 
 linked3 = KLD_linked.merge(crsp_msf, on=['permno', 'date'],
                            suffixes=('_KLD_LINK', '_crsp'))
+linked3.drop(columns=['monthly_crsp'], inplace=True)
+linked3.rename(columns={'cusip':'cusip_crsp', 'monthly_KLD_LINK':'monthly'}, inplace=True)
 
 linked4 = KLD.merge(crsp_linked, on=['companyname', 'monthly'],
                     suffixes=('_KLD', '_crsp_LINK'))
+linked4.drop(columns=['date_crsp_LINK'], inplace=True)
+linked4.rename(columns={'date_KLD':'date', 'cusip':'cusip_KLD', 'ticker_crsp_LINK':'ticker_LINK'}, inplace=True)
+
+# check if linked1, linked2, linked3, and linked4 identical (expect TRUE)
+linked2[sorted(linked2)].sort_values(list(linked2[sorted(linked2)].columns)).reset_index(drop=True).equals(linked1[sorted(linked1)].sort_values(list(linked1[sorted(linked1)].columns)).reset_index(drop=True))
+linked3[sorted(linked3)].sort_values(list(linked3[sorted(linked3)].columns)).reset_index(drop=True).equals(linked2[sorted(linked2)].sort_values(list(linked2[sorted(linked2)].columns)).reset_index(drop=True))
+linked4[sorted(linked4)].sort_values(list(linked4[sorted(linked4)].columns)).reset_index(drop=True).equals(linked3[sorted(linked3)].sort_values(list(linked3[sorted(linked3)].columns)).reset_index(drop=True))
+
+# How about lowercase tickers?
