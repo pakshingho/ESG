@@ -33,6 +33,9 @@ import pandas as pd
 import numpy as np
 from fuzzywuzzy import fuzz
 from cusipCorrection import cusipCorrection # a function to correct wrongly shifted CUSIP
+import time
+
+start_time = time.time()
 
 ###################
 # Connect to WRDS #
@@ -283,12 +286,12 @@ KLD_CRSP_link.to_csv('KLD_CRSP_Link.csv', index=False)
 ################################################
 # Step 4: Using Link Tables to Merge KLD and CRSP Data #
 ################################################
-
 """
 36397 merge by date method
 49606 merge by monthly period method
 49606 merge by business day method 49559 if not consider pre-2000 Aug
 """
+print('Using Link Tables to Merge KLD and CRSP Data')
 
 KLD = _kld2.copy()
 KLD['monthly'] = pd.to_datetime(KLD.date).dt.to_period('M') # month method
@@ -307,12 +310,11 @@ crsp_msf['monthly'] = pd.to_datetime(crsp_msf.date).dt.to_period('M') # month me
 # Merge KLD with the link table
 KLD_linked = KLD.merge(KLD_CRSP_link, on=['companyname'],
                        suffixes=('_KLD', '_LINK'))
-# KLD_linked.drop(columns=[''], inplace=True)
-
+"""
 # Merge CRSP with the link table
 crsp_linked = crsp_msf.merge(KLD_CRSP_link, on='permno',
                              suffixes=('_crsp', '_LINK'))
-
+"""
 # 4. different merging methods give the same result:
 """
 # Both linked to link table then merge:
@@ -363,6 +365,8 @@ linked4[sorted(linked4)].sort_values(list(linked4[sorted(linked4)].columns)).res
 ###################
 # Part 2  Merge KLD-CRSP Link with CCM LINK #
 ###################
+print('Merging KLD-CRSP Link with CCM LINK')
+
 ccm_link = conn.raw_sql("""
                         select distinct a.permno, gvkey, date
                         from
@@ -429,11 +433,11 @@ KLD_CRSP_CCM = linked3.merge(ccm_link, left_on=['permno', 'date'], right_on=['pe
 ###################
 # Part 3: Merge KLD-CRSP-CCM with Compustat funda #
 ###################
+print('Merging KLD-CRSP-CCM with Compustat funda')
 
 # Get Companies with non-missing Asset or Sales Item
 funda = conn.raw_sql("""
-                     select gvkey, datadate, fyear, conm,
-                     sale, at
+                     select gvkey, datadate, fyear, conm
                      from
                      comp.funda
                      where
@@ -447,6 +451,17 @@ funda = conn.raw_sql("""
                      and fic = 'USA'
                      and datadate >= '1990-01-01'
                      """)
+conn.close()
+"""
+funda.query("(sale > 0 or at > 0) \
+            and consol == 'C' \
+            and indfmt == 'INDL' \
+            and datafmt == 'STD' \
+            and popsrc == 'D' \
+            and curcd == 'USD' \
+            and final == 'Y' \
+            and fic == 'USA'")
+"""
 
 funda = funda.sort_values(['gvkey', 'datadate']).reset_index(drop=True)
 
@@ -466,25 +481,48 @@ KLD_CRSP_CCM.sort_values(['gvkey', 'year', 'score', 'name_ratio'],
                          ascending=[True, True, True, False],
                          inplace=True) # 44968
 
+"""
+# Drop duplicates before merging
 KLD_CRSP_CCM_drop_dup = KLD_CRSP_CCM.drop_duplicates(subset=['gvkey', 'year'], keep='first') # 44131
 
 KLD_CRSP_CCM2 = pd.merge(KLD_CRSP_CCM_drop_dup, funda, left_on=['gvkey', 'year'], right_on=['gvkey', 'fyear']) #43327
 # KLD_CRSP_CCM2.duplicated(['gvkey', 'fyear'], keep=False).sum()
-
-"""
-funda.query("(sale > 0 or at > 0) \
-            and consol == 'C' \
-            and indfmt == 'INDL' \
-            and datafmt == 'STD' \
-            and popsrc == 'D' \
-            and curcd == 'USD' \
-            and final == 'Y' \
-            and fic == 'USA'")
 """
 
-KLD_CRSP_CCM3 = pd.merge(KLD_CRSP_CCM, funda, left_on=['gvkey', 'year'], right_on=['gvkey', 'fyear'])
-KLD_CRSP_CCM3.sort_values(['gvkey', 'year', 'score', 'name_ratio'],
-                          ascending=[True, True, True, False],
-                          inplace=True)
-KLD_CRSP_CCM3.drop_duplicates(subset=['gvkey', 'year'], keep='first', inplace=True) # 43327
 
+KLD_CRSP_CCM_COMP = pd.merge(KLD_CRSP_CCM, funda, left_on=['gvkey', 'year'], right_on=['gvkey', 'fyear'])
+KLD_CRSP_CCM_COMP.sort_values(['gvkey', 'year', 'score', 'name_ratio'],
+                              ascending=[True, True, True, False],
+                              inplace=True)
+KLD_CRSP_CCM_COMP.drop_duplicates(subset=['gvkey', 'year'], keep='first', inplace=True) # 43327, 43331
+
+# Save detailed link table as CSV-file
+KLD_CRSP_CCM_COMP.to_csv('KLD_CRSP_CCM_COMP_detailed.csv', index=False)
+
+"""
+# Compare company name using spelling distance
+KLD_CRSP_CCM_COMP['name_ratio2'] = KLD_CRSP_CCM_COMP.apply(lambda x: fuzz.token_set_ratio(x.conm, x.companyname), axis=1) # Compustat & KLD
+KLD_CRSP_CCM_COMP['name_ratio3'] = KLD_CRSP_CCM_COMP.apply(lambda x: fuzz.token_set_ratio(x.conm, x.comnam), axis=1) # Compustat & CRSP
+import matplotlib.pyplot as plt
+plt.hist([KLD_CRSP_CCM_COMP['name_ratio'],
+          KLD_CRSP_CCM_COMP['name_ratio2'],
+          KLD_CRSP_CCM_COMP['name_ratio3']],
+         density=False,
+         align='right',
+         alpha=0.8,
+         label=['KLD-CRSP', 'KLD-Compustat', 'Compustat-CRSP'])
+plt.legend(loc='upper left')
+plt.show()
+"""
+
+# Drop irrelevant columns
+KLD_CRSP_CCM_COMP.drop(columns=['ticker_KLD', 'cusip_KLD', 'cusip_orig',
+                                'monthly', 'cusip_LINK', 'ticker_LINK',
+                                'comnam', 'name_ratio', 'score', 'cusip_crsp',
+                                'conm'],
+                       inplace=True)
+
+# Save link table as CSV-file
+KLD_CRSP_CCM_COMP.to_csv('KLD_CRSP_CCM_COMP_Link.csv', index=False)
+
+print("--- %s seconds ---" % (time.time() - start_time))

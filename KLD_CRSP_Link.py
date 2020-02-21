@@ -54,6 +54,7 @@ _kld2['ticker'].replace({'NA':None, '#N/A':None}, inplace=True)
 
 # set 'companyname' to uppercase. This will allow more backfill and forwardfill observations
 _kld2['companyname'] = _kld2['companyname'].str.upper()
+_kld2['ticker'] = _kld2['ticker'].str.upper()
 
 # Back fill and forward fill missing CUSIPs. Can also try bfill ticker.
 _kld2['cusip'] = _kld2.groupby(['companyname'])['cusip'].bfill().ffill()
@@ -253,9 +254,9 @@ _link2_3 = _link2_3[['cusip','ticker','permno','companyname','comnam','name_rati
 # Step 3: Finalize Links and Scores #
 #####################################
 
-# Caution: This link is based uppercase of 'companyname'. One need to convert 
+# Caution: This link is based uppercase of 'companyname' and 'ticker'. One need to convert 
 # 'companyname' in KLD data set before using this link to merge data sets.
-KLD_CRSP_link = _link1_2.append(_link2_3)
+KLD_CRSP_link = _link1_2.append(_link2_3) # 9492 rows
 
 
 ################################################
@@ -328,5 +329,3 @@ linked4.rename(columns={'date_KLD':'date', 'cusip':'cusip_KLD', 'ticker_crsp_LIN
 linked2[sorted(linked2)].sort_values(list(linked2[sorted(linked2)].columns)).reset_index(drop=True).equals(linked1[sorted(linked1)].sort_values(list(linked1[sorted(linked1)].columns)).reset_index(drop=True))
 linked3[sorted(linked3)].sort_values(list(linked3[sorted(linked3)].columns)).reset_index(drop=True).equals(linked2[sorted(linked2)].sort_values(list(linked2[sorted(linked2)].columns)).reset_index(drop=True))
 linked4[sorted(linked4)].sort_values(list(linked4[sorted(linked4)].columns)).reset_index(drop=True).equals(linked3[sorted(linked3)].sort_values(list(linked3[sorted(linked3)].columns)).reset_index(drop=True))
-
-# How about lowercase tickers?
