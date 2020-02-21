@@ -427,7 +427,7 @@ KLD_CRSP_CCM = linked3.merge(ccm_link, left_on=['permno', 'date'], right_on=['pe
 
 
 ###################
-# Connect to WRDS #
+# Part 3: Merge KLD-CRSP-CCM with Compustat funda #
 ###################
 
 # Get Companies with non-missing Asset or Sales Item
@@ -452,7 +452,8 @@ funda = funda.sort_values(['gvkey', 'datadate']).reset_index(drop=True)
 
 # Create 'year' variables from dates
 #funda['year'] = pd.to_datetime(funda.datadate).dt.year # duplicates exist due to calendar and fiscal year mix
-funda[funda.gvkey=='001000']
+
+# Check duplicates in Compustat
 funda.duplicated(['gvkey', 'datadate']).sum()
 funda.duplicated(['gvkey', 'fyear']).sum()
 #funda.duplicated(['gvkey', 'year']).sum()
@@ -461,14 +462,14 @@ funda.duplicated(['gvkey', 'fyear']).sum()
 
 #temp.duplicated(['gvkey', 'year']).sum()
 
-temp.sort_values(['gvkey', 'year', 'score', 'name_ratio'],
-                     ascending=[True, True, True, False],
-                     inplace=True) # 44968
+KLD_CRSP_CCM.sort_values(['gvkey', 'year', 'score', 'name_ratio'],
+                         ascending=[True, True, True, False],
+                         inplace=True) # 44968
 
-temp_drop_dup = temp.drop_duplicates(subset=['gvkey', 'year'], keep='first') # 44131
+KLD_CRSP_CCM_drop_dup = KLD_CRSP_CCM.drop_duplicates(subset=['gvkey', 'year'], keep='first') # 44131
 
-temp2 = pd.merge(temp_drop_dup, funda, left_on=['gvkey', 'year'], right_on=['gvkey', 'fyear']) #43327
-# temp2.duplicated(['gvkey', 'fyear'], keep=False).sum()
+KLD_CRSP_CCM2 = pd.merge(KLD_CRSP_CCM_drop_dup, funda, left_on=['gvkey', 'year'], right_on=['gvkey', 'fyear']) #43327
+# KLD_CRSP_CCM2.duplicated(['gvkey', 'fyear'], keep=False).sum()
 
 """
 funda.query("(sale > 0 or at > 0) \
@@ -481,9 +482,9 @@ funda.query("(sale > 0 or at > 0) \
             and fic == 'USA'")
 """
 
-temp3 = pd.merge(temp, funda, left_on=['gvkey', 'year'], right_on=['gvkey', 'fyear'])
-temp3.sort_values(['gvkey', 'year', 'score', 'name_ratio'],
-                  ascending=[True, True, True, False],
-                  inplace=True)
-temp3.drop_duplicates(subset=['gvkey', 'year'], keep='first', inplace=True) # 43327
+KLD_CRSP_CCM3 = pd.merge(KLD_CRSP_CCM, funda, left_on=['gvkey', 'year'], right_on=['gvkey', 'fyear'])
+KLD_CRSP_CCM3.sort_values(['gvkey', 'year', 'score', 'name_ratio'],
+                          ascending=[True, True, True, False],
+                          inplace=True)
+KLD_CRSP_CCM3.drop_duplicates(subset=['gvkey', 'year'], keep='first', inplace=True) # 43327
 
