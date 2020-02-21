@@ -30,7 +30,6 @@ PIRIC from FRED
 
 import wrds
 import pandas as pd
-import numpy as np
 from fuzzywuzzy import fuzz
 from cusipCorrection import cusipCorrection # a function to correct wrongly shifted CUSIP
 import time
