@@ -515,10 +515,9 @@ plt.show()
 """
 
 # Drop irrelevant columns
-KLD_CRSP_CCM_COMP.drop(columns=['ticker_KLD', 'cusip_KLD', 'cusip_orig',
-                                'monthly', 'cusip_LINK', 'ticker_LINK',
-                                'comnam', 'name_ratio', 'score', 'cusip_crsp',
-                                'conm'],
+KLD_CRSP_CCM_COMP.drop(columns=['cusip_orig','monthly', 'cusip_LINK',
+                                'ticker_LINK', 'comnam', 'name_ratio', 'score',
+                                'cusip_crsp', 'conm'],
                        inplace=True)
 
 # Save link table as CSV-file
